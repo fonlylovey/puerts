@@ -2,13 +2,24 @@ name: unity build plugins
 
 on: 
   workflow_dispatch:
+    inputs:
+      websocket:
+        type: choice
+        options:
+        - "0"
+        - "1"
+        - "2"
+        - "3"
+        default: '1'
   push:
     paths: 
       - unity/native_src/**
-      - unity/native_src_ourv8/**
+      - unity/cli/**
       - unreal/Puerts/Source/JsEnv/Private/V8InspectorImpl.cpp
+      - unreal/Puerts/Source/JsEnv/Private/WebSocketImpl.cpp
       - unreal/Puerts/Source/JsEnv/Private/V8InspectorImpl.h
       - unreal/Puerts/Source/JsEnv/Private/PromiseRejectCallback.hpp
+      - unreal/Puerts/ThirdParty/**
       - .github/workflows/unity_build_plugins.yml
 
 env:
@@ -19,243 +30,212 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - uses: actions/checkout@v2
-      - name: Get backend artifact
-        uses: ./.github/workflows/composites/unity-download-backend/
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: 'v8'
+      - uses: actions/checkout@v3
       - name: Install NDK
+        shell: bash
         run: |
           cd ~
+          rm -rf ~/android-ndk-r21b
           wget -O NDK -q https://dl.google.com/android/repository/android-ndk-r21b-linux-x86_64.zip
           sudo apt install unzip -y
           unzip -q NDK
-      - name: Build
-        run: |
-          cd unity/native_src
-          chmod 777 make_android.sh
-          ANDROID_NDK=~/android-ndk-r21b ./make_android.sh
-      - name: Upload
-        uses: actions/upload-artifact@v2
+      - name: BuildAndroid
+        uses: ./.github/workflows/composites/unity-build-plugins/android/
         with:
-          path: ./unity/Assets/Plugins/**/*
-          name: Unity_Plugins_V8
-  android_qjs:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: v8_9.4.146.24
+      - name: BuildAndroid_V8_10_6
+        uses: ./.github/workflows/composites/unity-build-plugins/android/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: v8_10.6.194
+          websocket: ${{ github.event.inputs.websocket || '1' }}
+      - name: BuildAndroidQuickJS
+        uses: ./.github/workflows/composites/unity-build-plugins/android/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: quickjs
+      - name: BuildAndroidNodeJS
+        uses: ./.github/workflows/composites/unity-build-plugins/android/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: nodejs_16
+      - name: BuildAndroidMultBackend
+        uses: ./.github/workflows/composites/unity-build-plugins/android/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: mult
+          
+  ohos:
     runs-on: ubuntu-latest
     
     steps:
-      - uses: actions/checkout@v2
-      - name: Get backend artifact
-        uses: ./.github/workflows/composites/unity-download-backend/
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: 'quickjs'
+      - uses: actions/checkout@v3
       - name: Install NDK
+        shell: bash
         run: |
           cd ~
-          wget -O NDK -q https://dl.google.com/android/repository/android-ndk-r21b-linux-x86_64.zip
-          sudo apt install unzip -y
-          unzip -q NDK
-      - name: Build
-        run: |
-          ls ~/android-ndk-r21b
-          cd unity/native_src
-          chmod 777 make_android.sh
-          ANDROID_NDK=~/android-ndk-r21b ./make_android.sh quickjs
-      - name: Upload
-        uses: actions/upload-artifact@v2
+          curl -O https://repo.huaweicloud.com/harmonyos/os/4.1-Release/ohos-sdk-windows_linux-public.tar.gz
+          tar xvfz ohos-sdk-windows_linux-public.tar.gz
+          cd ohos-sdk/linux
+          unzip -q -o -d ./ native-linux-x64-4.1.7.5-Release.zip
+      - name: BuildOHOS
+        uses: ./.github/workflows/composites/unity-build-plugins/ohos/
         with:
-          path: ./unity/Assets/Plugins/**/*
-          name: Unity_Plugins_QuickJS
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: v8_9.4.146.24
+      - name: BuildOHOS_V8_10_6
+        uses: ./.github/workflows/composites/unity-build-plugins/ohos/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: v8_10.6.194
+          websocket: ${{ github.event.inputs.websocket || '1' }}
+      - name: BuildOHOSQuickJS
+        uses: ./.github/workflows/composites/unity-build-plugins/ohos/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: quickjs
+      - name: BuildOHOSMultBackend
+        uses: ./.github/workflows/composites/unity-build-plugins/ohos/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: mult
+
   ios:
-    runs-on: macos-10.15
+    runs-on: macos-13
 
     steps:
-      - uses: actions/checkout@v2
-      - name: Get backend artifact
-        uses: ./.github/workflows/composites/unity-download-backend/
+      - uses: actions/checkout@v3
+      - name: BuildiOS
+        uses: ./.github/workflows/composites/unity-build-plugins/ios/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: 'v8'
-      - name: Use Xcode 12.0 for x86
-        run: sudo xcode-select -switch "/Applications/Xcode_12.app"
-      - name: Build
-        run: |
-          cd unity/native_src
-          sh ./make_ios.sh
-      - name: Upload
-        uses: actions/upload-artifact@v2
+          backend: v8_9.4.146.24
+      - name: BuildiOS_V8_10_6
+        uses: ./.github/workflows/composites/unity-build-plugins/ios/
         with:
-          path: ./unity/Assets/Plugins/**/*
-          name: Unity_Plugins_V8
-  ios_qjs:
-    runs-on: macos-10.15
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: v8_10.6.194
+          websocket: ${{ github.event.inputs.websocket || '1' }}
+      - name: BuildiOSQuickjs
+        uses: ./.github/workflows/composites/unity-build-plugins/ios/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: quickjs
+      - name: BuildiOSNodeJS
+        uses: ./.github/workflows/composites/unity-build-plugins/ios/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: nodejs_16
+      - name: BuildiOSMultBackend
+        uses: ./.github/workflows/composites/unity-build-plugins/ios/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: mult
 
-    steps:
-      - uses: actions/checkout@v2
-      - name: Get backend artifact
-        uses: ./.github/workflows/composites/unity-download-backend/
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: 'quickjs'
-      - name: Use Xcode 12.0 for x86
-        run: sudo xcode-select -switch "/Applications/Xcode_12.app"
-      - name: Build
-        run: |
-          cd unity/native_src
-          sh ./make_ios.sh quickjs
-      - name: Upload
-        uses: actions/upload-artifact@v2
-        with:
-          path: ./unity/Assets/Plugins/**/*
-          name: Unity_Plugins_QuickJS
   osx:
-    runs-on: macos-10.15
+    runs-on: macos-13
 
     steps:
-      - uses: actions/checkout@v2
-      - name: Get backend artifact
-        uses: ./.github/workflows/composites/unity-download-backend/
+      - uses: actions/checkout@v3
+      - name: BuildOSX
+        uses: ./.github/workflows/composites/unity-build-plugins/osx/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: 'v8'
-      - name: Use Xcode 12.0 for x86
-        run: sudo xcode-select -switch "/Applications/Xcode_12.app"
-      - name: Build
-        run: |
-          cd unity/native_src
-          sh ./make_osx.sh
-      - name: Upload
-        uses: actions/upload-artifact@v2
+          backend: v8_9.4.146.24
+      - name: BuildOSX_V8_10_6
+        uses: ./.github/workflows/composites/unity-build-plugins/osx/
         with:
-          path: ./unity/Assets/Plugins/**/*
-          name: Unity_Plugins_V8
-  osx_node:
-    runs-on: macos-10.15
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: v8_10.6.194
+          websocket: ${{ github.event.inputs.websocket || '1' }}
+      - name: BuildOSXNodejs
+        uses: ./.github/workflows/composites/unity-build-plugins/osx/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: nodejs_16
+      - name: BuildOSXQuickJS
+        uses: ./.github/workflows/composites/unity-build-plugins/osx/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: quickjs
+      - name: BuildOSXMultBackend
+        uses: ./.github/workflows/composites/unity-build-plugins/osx/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: mult
 
-    steps:
-      - uses: actions/checkout@v2
-      - name: Get backend artifact
-        uses: ./.github/workflows/composites/unity-download-backend/
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: 'nodejs'
-      - name: Use Xcode 12.0 for x86
-        run: sudo xcode-select -switch "/Applications/Xcode_12.app"
-      - name: Build
-        run: |
-          cd unity/native_src
-          sh ./make_osx.sh nodejs
-      - name: Upload
-        uses: actions/upload-artifact@v2
-        with:
-          path: ./unity/Assets/Plugins/**/*
-          name: Unity_Plugins_NodeJS
-  osx_qjs:
-    runs-on: macos-10.15
-
-    steps:
-      - uses: actions/checkout@v2
-      - name: Get backend artifact
-        uses: ./.github/workflows/composites/unity-download-backend/
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: 'quickjs'
-      - name: Use Xcode 12.0 for x86
-        run: sudo xcode-select -switch "/Applications/Xcode_12.app"
-      - name: Build
-        run: |
-          cd unity/native_src
-          sh ./make_osx.sh quickjs
-      - name: Upload
-        uses: actions/upload-artifact@v2
-        with:
-          path: ./unity/Assets/Plugins/**/*
-          name: Unity_Plugins_QuickJS
   windows:
     runs-on: windows-2019
 
     steps:
-      - uses: actions/checkout@v2
-      - name: Get backend artifact
-        uses: ./.github/workflows/composites/unity-download-backend/
+      - uses: actions/checkout@v3
+      - name: BuildWindows
+        uses: ./.github/workflows/composites/unity-build-plugins/windows/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: 'v8'
-      - name: Build
-        run: |
-          cd unity\native_src
-          .\make_win64.bat
-          .\make_win32.bat
-      - name: Upload
-        uses: actions/upload-artifact@v2
+          backend: v8_9.4.146.24
+      - name: BuildWindows_V8_10_6
+        uses: ./.github/workflows/composites/unity-build-plugins/windows/
         with:
-          path: ./unity/Assets/Plugins/**/*
-          name: Unity_Plugins_V8
-  windows_qjs:
-    runs-on: windows-2019
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: v8_10.6.194
+          websocket: ${{ github.event.inputs.websocket || '1' }}
+      - name: BuildWindowsQuickjs
+        uses: ./.github/workflows/composites/unity-build-plugins/windows/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: quickjs
+      - name: BuildWindowsNodeJS
+        uses: ./.github/workflows/composites/unity-build-plugins/windows/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: nodejs_16
+      - name: BuildWindowsMultBackend
+        uses: ./.github/workflows/composites/unity-build-plugins/windows/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: mult
 
-    steps:
-      - uses: actions/checkout@v2
-      - name: Get backend artifact
-        uses: ./.github/workflows/composites/unity-download-backend/
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: 'quickjs'
-      - name: Build
-        run: |
-          cd unity\native_src
-          .\make_win64.bat quickjs
-          .\make_win32.bat quickjs
-      - name: Upload
-        uses: actions/upload-artifact@v2
-        with:
-          path: ./unity/Assets/Plugins/**/*
-          name: Unity_Plugins_QuickJS
-  windows_node:
-    runs-on: windows-2019
-
-    steps:
-      - uses: actions/checkout@v2
-      - name: Get backend artifact
-        uses: ./.github/workflows/composites/unity-download-backend/
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: 'nodejs'
-      - name: Build
-        run: |
-          cd unity\native_src
-          .\make_win64.bat nodejs
-          # .\make_win32.bat nodejs
-      - name: Upload
-        uses: actions/upload-artifact@v2
-        with:
-          path: ./unity/Assets/Plugins/**/*
-          name: Unity_Plugins_NodeJS
   linux64:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Install libc++-dev
-        run: |
-          sudo apt-get install clang
-          sudo apt-get install libc++-dev
-          sudo apt-get install libc++abi-dev
-      - uses: actions/checkout@v2
-      - name: Get backend artifact
-        uses: ./.github/workflows/composites/unity-download-backend/
+      - uses: actions/checkout@v3
+      - name: BuildLinux
+        uses: ./.github/workflows/composites/unity-build-plugins/linux/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: 'v8'
-      - name: Build
-        run: |
-          cd unity/native_src
-          chmod 777 make_linux64.sh
-          ./make_linux64.sh
-      - name: Upload
-        uses: actions/upload-artifact@v2
+          backend: v8_9.4.146.24
+      - name: BuildLinux_V8_10_6
+        uses: ./.github/workflows/composites/unity-build-plugins/linux/
         with:
-          path: ./unity/Assets/Plugins/**/*
-          name: Unity_Plugins_V8
- 
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: v8_10.6.194
+          websocket: ${{ github.event.inputs.websocket || '1' }}
+      - name: BuildWindowsQuickjs
+        uses: ./.github/workflows/composites/unity-build-plugins/linux/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: quickjs
+      - name: BuildLinuxNodeJS
+        uses: ./.github/workflows/composites/unity-build-plugins/linux/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: nodejs_16
+      - name: BuildLinuxMultBackend
+        uses: ./.github/workflows/composites/unity-build-plugins/linux/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: mult
+          
+  wasm:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      - name: BuildWasm
+        uses: ./.github/workflows/composites/unity-build-plugins/wasm/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: quickjs

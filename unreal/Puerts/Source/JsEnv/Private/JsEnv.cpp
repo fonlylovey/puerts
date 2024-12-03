@@ -9,7 +9,7 @@
 #include "JsEnv.h"
 #include "JsEnvImpl.h"
 
-namespace puerts
+namespace PUERTS_NAMESPACE
 {
 FJsEnv::FJsEnv(const FString& ScriptRoot)
 {
@@ -17,10 +17,11 @@ FJsEnv::FJsEnv(const FString& ScriptRoot)
 }
 
 FJsEnv::FJsEnv(std::shared_ptr<IJSModuleLoader> InModuleLoader, std::shared_ptr<ILogger> InLogger, int InDebugPort,
-    void* InExternalRuntime, void* InExternalContext)
+    std::function<void(const FString&)> InOnSourceLoadedCallback, const FString InFlags, void* InExternalRuntime,
+    void* InExternalContext)
 {
-    GameScript =
-        std::make_unique<FJsEnvImpl>(std::move(InModuleLoader), InLogger, InDebugPort, InExternalRuntime, InExternalContext);
+    GameScript = std::make_unique<FJsEnvImpl>(
+        std::move(InModuleLoader), InLogger, InDebugPort, InOnSourceLoadedCallback, InFlags, InExternalRuntime, InExternalContext);
 }
 
 void FJsEnv::Start(const FString& ModuleName, const TArray<TPair<FString, UObject*>>& Arguments)
@@ -80,4 +81,14 @@ void FJsEnv::ReloadModule(FName ModuleName, const FString& JsSource)
     GameScript->ReloadModule(ModuleName, JsSource);
 }
 
-}    // namespace puerts
+void FJsEnv::ReloadSource(const FString& Path, const std::string& JsSource)
+{
+    GameScript->ReloadSource(Path, JsSource);
+}
+
+void FJsEnv::OnSourceLoaded(std::function<void(const FString&)> Callback)
+{
+    GameScript->OnSourceLoaded(Callback);
+}
+
+}    // namespace PUERTS_NAMESPACE

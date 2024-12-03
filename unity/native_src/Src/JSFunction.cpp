@@ -9,7 +9,7 @@
 #include "V8Utils.h"
 #include "JSEngine.h"
 
-namespace puerts
+namespace PUERTS_NAMESPACE
 {
     JSObject::JSObject(v8::Isolate* InIsolate, v8::Local<v8::Context> InContext, v8::Local<v8::Object> InObject, int32_t InIndex) 
     {
@@ -25,8 +25,14 @@ namespace puerts
         GObject.Reset();
     }
 
+#ifdef MULT_BACKENDS
+    JSFunction::JSFunction(puerts::IPuertsPlugin* InPuertsPlugin, v8::Isolate* InIsolate, v8::Local<v8::Context> InContext, v8::Local<v8::Function> InFunction, int32_t InIndex)
+    {
+        ResultInfo.PuertsPlugin = InPuertsPlugin;
+#else
     JSFunction::JSFunction(v8::Isolate* InIsolate, v8::Local<v8::Context> InContext, v8::Local<v8::Function> InFunction, int32_t InIndex)
     {
+#endif
         ResultInfo.Isolate = InIsolate;
         ResultInfo.Context.Reset(InIsolate, InContext);
         GFunction.Reset(InIsolate, InFunction);
@@ -36,6 +42,9 @@ namespace puerts
     JSFunction::~JSFunction()
     {
         v8::Isolate* Isolate = ResultInfo.Isolate;
+#ifdef THREAD_SAFE
+        v8::Locker Locker(Isolate);
+#endif
         v8::Isolate::Scope IsolateScope(Isolate);
         v8::HandleScope HandleScope(Isolate);
         v8::Local<v8::Context> Context = ResultInfo.Context.Get(Isolate);
@@ -50,63 +59,68 @@ namespace puerts
         ResultInfo.Context.Reset();
     }
 
-    static v8::Local<v8::Value> ToV8(v8::Isolate* Isolate, v8::Local<v8::Context> Context, const FValue &Value)
+    static v8::Local<v8::Value> ToV8(v8::Isolate* Isolate, v8::Local<v8::Context> Context, FValue &Value)
     {
-        JSEngine *JsEngine = nullptr;
         switch (Value.Type)
         {
-        case NullOrUndefined:
+        case puerts::NullOrUndefined:
             return v8::Null(Isolate);
-        case BigInt:
+        case puerts::BigInt:
             return v8::BigInt::New(Isolate, Value.BigInt);
-        case Number:
+        case puerts::Number:
             return v8::Number::New(Isolate, Value.Number);
-        case Date:
+        case puerts::Date:
             return v8::Date::New(Context, Value.Number).ToLocalChecked();
-        case String:
+        case puerts::String:
             return FV8Utils::V8String(Isolate, Value.Str.c_str());
-        case NativeObject:
-            JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
-            return JsEngine->FindOrAddObject(Isolate, Context, Value.ObjectInfo.ClassID, Value.ObjectInfo.ObjectPtr);
-        case Function:
+        case puerts::NativeObject:
+            return Value.Persistent.Get(Isolate);
+        case puerts::Function:
             return Value.FunctionPtr->GFunction.Get(Isolate);
-        case JsObject:
+        case puerts::JsObject:
             return Value.JSObjectPtr->GObject.Get(Isolate);
-        case Boolean:
+        case puerts::Boolean:
             return v8::Boolean::New(Isolate, Value.Boolean);
-        case ArrayBuffer:
-            return Value.ArrayBuffer.Get(Isolate);
+        case puerts::ArrayBuffer:
+            return Value.Persistent.Get(Isolate);
         default:
             return v8::Undefined(Isolate);
         }
     }
 
-    bool JSFunction::Invoke(int argumentsLength, bool HasResult)
+    /*void JSFunction::SetResult(v8::MaybeLocal<v8::Value> maybeValue)
+    {
+
+    }*/
+
+    bool JSFunction::Invoke(bool HasResult)
     {
         v8::Isolate* Isolate = ResultInfo.Isolate;
+#ifdef THREAD_SAFE
+        v8::Locker Locker(Isolate);
+#endif
         v8::Isolate::Scope IsolateScope(Isolate);
         v8::HandleScope HandleScope(Isolate);
         v8::Local<v8::Context> Context = ResultInfo.Context.Get(Isolate);
         v8::Context::Scope ContextScope(Context);
 
+        std::vector< v8::Local<v8::Value>> V8Args;
+        for (int i = 0; i < Arguments.size(); ++i)
+        {
+            V8Args.push_back(ToV8(Isolate, Context, Arguments[i]));
+            Arguments[i].Persistent.Reset();
+        }
         Arguments.clear();
-        JSEngine* JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
-        if (argumentsLength > 0)
-        {
-            JsEngine->GetJSArgumentsCallback(Isolate, JsEngine->Idx, this);
-        }
-        
         v8::TryCatch TryCatch(Isolate);
-        v8::Local<v8::Value> *args = (v8::Local<v8::Value> *)alloca(sizeof(v8::Local<v8::Value>) * Arguments.size());
-        for (int i = 0; i < Arguments.size(); i++)
-        {
-            args[i] = ToV8(Isolate, Context, Arguments[i]);
-        }
-        auto maybeValue = GFunction.Get(Isolate)->Call(Context, Context->Global(), static_cast<int>(Arguments.size()), args);
+        auto maybeValue = GFunction.Get(Isolate)->Call(Context, Context->Global(), static_cast<int>(V8Args.size()), V8Args.data());
         
         if (TryCatch.HasCaught())
         {
-            LastExceptionInfo = FV8Utils::ExceptionToString(Isolate, TryCatch);
+            v8::Local<v8::Value> Exception = TryCatch.Exception();
+            const auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
+            JsEngine->SetLastException(Exception);
+            LastException.Reset(Isolate, Exception);
+            LastExceptionInfo = FV8Utils::ExceptionToString(Isolate, Exception);
             return false;
         }
         else

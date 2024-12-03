@@ -8,10 +8,14 @@
 
 #pragma once
 
+#include "NamespaceDef.h"
+
+PRAGMA_DISABLE_UNDEFINED_IDENTIFIER_WARNINGS
 #pragma warning(push, 0)
 #include "libplatform/libplatform.h"
 #include "v8.h"
 #pragma warning(pop)
+PRAGMA_ENABLE_UNDEFINED_IDENTIFIER_WARNINGS
 
 #include "DynamicInvoker.h"
 
@@ -32,9 +36,9 @@ public:
 
     void ProcessEvent(UFunction*, void* Parms) override;
 
-    TWeakPtr<puerts::IDynamicInvoker> DynamicInvoker;
+    TWeakPtr<PUERTS_NAMESPACE::IDynamicInvoker, ESPMode::ThreadSafe> DynamicInvoker;
 
-    UFunction* SignatureFunction;
+    TWeakObjectPtr<UFunction> SignatureFunction;
 
     // So, only uobject's delelgate is supported!
     TWeakObjectPtr<UObject> Owner;

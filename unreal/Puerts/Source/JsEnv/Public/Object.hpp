@@ -8,60 +8,85 @@
 
 #pragma once
 
-#if BUILDING_PES_EXTENSION
+#if defined(BUILDING_PES_EXTENSION)
 #include "PesapiObject.hpp"
-#else
+#endif
+#if !defined(BUILDING_PES_EXTENSION) || defined(PES_EXTENSION_WITH_V8_API)
 #include "V8Object.hpp"
 #endif
 
-namespace puerts
+namespace PUERTS_NAMESPACE
 {
+namespace internal
+{
+constexpr std::size_t NumDigits(std::size_t n)
+{
+    return n < 10 ? 1 : NumDigits(n / 10) + 1;
+}
+
+template <char... Chars>
+struct CharList
+{
+    const char Str[sizeof...(Chars)] = {Chars...};
+};
+
+template <std::size_t D, std::size_t N, char... Chars>
+struct SI2A
+{
+    using type = typename SI2A<D - 1, N / 10, '0' + N % 10, Chars...>::type;
+};
+
+template <std::size_t N, char... Chars>
+struct SI2A<1, N, Chars...>
+{
+    using type = CharList<'0' + N, Chars..., '\0'>;
+};
+
+template <std::size_t N>
+using SI2A_T = typename SI2A<NumDigits(N), N>::type;
+
+template <size_t N, typename... Rest>
+struct ParamsDecl
+{
+};
+
+template <size_t N, typename T, typename... Rest>
+struct ParamsDecl<N, T, Rest...>
+{
+    static constexpr auto Get()
+    {
+        return ParamsDecl<N, T>::Get() + Literal(", ") + ParamsDecl<N + 1, Rest...>::Get();
+    }
+};
+
+template <size_t N, typename T>
+struct ParamsDecl<N, T>
+{
+    static constexpr auto Get()
+    {
+        return Literal("p") + Literal(SI2A_T<N>().Str) + Literal(":") + ScriptTypeNameWithNamespace<T>::value();
+    }
+};
+
+template <size_t N>
+struct ParamsDecl<N>
+{
+    static constexpr auto Get()
+    {
+        return Literal("");
+    }
+};
+
+}    // namespace internal
+
 template <typename R, typename... Args>
 struct ScriptTypeName<std::function<R(Args...)>>
 {
-    static constexpr const char* value = "Function";
-};
-
-namespace converter
-{
-template <typename R, typename... Args>
-struct Converter<std::function<R(Args...)>>
-{
-    static v8::Local<v8::Value> toScript(v8::Local<v8::Context> context, std::function<R(Args...)> value)
+    static constexpr auto value()
     {
-        return v8::Undefined(context->GetIsolate());
-    }
-
-    static std::function<R(Args...)> toCpp(v8::Local<v8::Context> context, const v8::Local<v8::Value>& value)
-    {
-        Function PF(context, value.As<v8::Object>());
-        return [=](Args... cppArgs) -> R { return PF.Func<R>(cppArgs...); };
-    }
-
-    static bool accept(v8::Local<v8::Context> context, const v8::Local<v8::Value>& value)
-    {
-        return value->IsFunction();
+        return internal::Literal("(") + internal::ParamsDecl<0, Args...>::Get() + internal::Literal(") => ") +
+               ScriptTypeNameWithNamespace<R>::value();
     }
 };
 
-template <typename... Args>
-struct Converter<std::function<void(Args...)>>
-{
-    static v8::Local<v8::Value> toScript(v8::Local<v8::Context> context, std::function<void(Args...)> value)
-    {
-        return v8::Undefined(context->GetIsolate());
-    }
-
-    static std::function<void(Args...)> toCpp(v8::Local<v8::Context> context, const v8::Local<v8::Value>& value)
-    {
-        Function PF(context, value.As<v8::Object>());
-        return [=](Args... cppArgs) -> void { PF.Action(cppArgs...); };
-    }
-
-    static bool accept(v8::Local<v8::Context> context, const v8::Local<v8::Value>& value)
-    {
-        return value->IsFunction();
-    }
-};
-}    // namespace converter
-}    // namespace puerts
+}    // namespace PUERTS_NAMESPACE
